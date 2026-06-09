@@ -1,0 +1,77 @@
+name: Runx Governed Skill
+description: Run a governed runx skill in GitHub Actions and expose the receipt-producing command output.
+author: runxhq
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  skill:
+    description: Skill ref, skill directory, or SKILL.md path to pass to `runx skill`.
+    required: true
+  args:
+    description: Additional `runx skill` arguments, one shell token per line.
+    required: false
+    default: ""
+  json:
+    description: Append `--json` to the runx skill invocation.
+    required: false
+    default: "true"
+  receipt-dir:
+    description: Optional receipt output directory passed as `--receipt-dir`.
+    required: false
+    default: ""
+  working-directory:
+    description: Directory where the runx skill command should run.
+    required: false
+    default: "."
+  install:
+    description: Install the npm runx CLI before running.
+    required: false
+    default: "true"
+  version:
+    description: Version of @runxhq/cli to install when install is true.
+    required: false
+    default: "latest"
+  npm-package:
+    description: npm package that provides the runx binary.
+    required: false
+    default: "@runxhq/cli"
+  runx-binary:
+    description: runx binary to execute when install is false or a custom binary is desired.
+    required: false
+    default: "runx"
+
+outputs:
+  exit-code:
+    description: Exit code from the runx skill command.
+    value: ${{ steps.runx.outputs.exit-code }}
+  stdout:
+    description: Standard output from the runx skill command.
+    value: ${{ steps.runx.outputs.stdout }}
+  stderr:
+    description: Standard error from the runx skill command.
+    value: ${{ steps.runx.outputs.stderr }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install runx
+      if: ${{ inputs.install == 'true' }}
+      shell: bash
+      env:
+        RUNX_NPM_PACKAGE: ${{ inputs.npm-package }}
+        RUNX_VERSION: ${{ inputs.version }}
+      run: npm install --global "${RUNX_NPM_PACKAGE}@${RUNX_VERSION}"
+
+    - name: Run governed skill
+      id: runx
+      shell: bash
+      env:
+        INPUT_SKILL: ${{ inputs.skill }}
+        INPUT_ARGS: ${{ inputs.args }}
+        INPUT_JSON: ${{ inputs.json }}
+        INPUT_RECEIPT_DIR: ${{ inputs.receipt-dir }}
+        INPUT_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        INPUT_RUNX_BINARY: ${{ inputs.runx-binary }}
+      run: "${GITHUB_ACTION_PATH}/scripts/runx-action.sh"

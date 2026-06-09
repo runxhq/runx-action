@@ -1,0 +1,66 @@
+name: smoke
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  action-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create fixture skill
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/runx-fixture/skills/echo"
+          cat > "$RUNNER_TEMP/runx-fixture/skills/echo/SKILL.md" <<'EOF'
+          ---
+          name: echo
+          description: Echo a message through the cli-tool adapter.
+          source:
+            type: cli-tool
+            command: sh
+            args:
+              - ./run.sh
+            timeout_seconds: 10
+            sandbox:
+              profile: readonly
+              cwd_policy: skill-directory
+          inputs:
+            message:
+              type: string
+              required: true
+              description: Message to echo
+          runx:
+            input_resolution:
+              required:
+                - message
+          ---
+
+          Echo the provided message.
+          EOF
+          cat > "$RUNNER_TEMP/runx-fixture/skills/echo/run.sh" <<'EOF'
+          #!/bin/sh
+          printf '%s' "${RUNX_INPUT_MESSAGE:-}"
+          EOF
+          chmod +x "$RUNNER_TEMP/runx-fixture/skills/echo/run.sh"
+
+      - name: Run local action
+        uses: ./
+        env:
+          RUNX_RECEIPT_SIGN_KID: runx-action-smoke
+          RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
+          RUNX_RECEIPT_SIGN_ISSUER_TYPE: hosted
+        with:
+          working-directory: ${{ runner.temp }}/runx-fixture
+          skill: ./skills/echo
+          receipt-dir: ${{ runner.temp }}/runx-receipts
+          args: |
+            --message=hello from runx-action
+
+      - name: Run syntax check
+        shell: bash
+        run: bash -n scripts/runx-action.sh
