@@ -42,6 +42,30 @@ jobs:
 
           Echo the provided message.
           EOF
+          cat > "$RUNNER_TEMP/runx-fixture/skills/echo/X.yaml" <<'EOF'
+          skill: echo
+          version: "0.1.0"
+          catalog:
+            kind: skill
+            audience: system
+            visibility: internal
+            role: canonical
+          runners:
+            default:
+              default: true
+              type: cli-tool
+              command: /usr/bin/env
+              args:
+                - sh
+                - ./run.sh
+              inputs:
+                message:
+                  type: string
+                  required: true
+                  description: Message to echo
+              outputs:
+                message: string
+          EOF
           cat > "$RUNNER_TEMP/runx-fixture/skills/echo/run.sh" <<'EOF'
           #!/bin/sh
           printf '%s' "${RUNX_INPUT_MESSAGE:-}"
