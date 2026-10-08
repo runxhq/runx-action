@@ -8,6 +8,10 @@ on:
 jobs:
   action-smoke:
     runs-on: ubuntu-latest
+    env:
+      RUNX_RECEIPT_SIGN_KID: runx-action-smoke
+      RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
+      RUNX_RECEIPT_SIGN_ISSUER_TYPE: hosted
     steps:
       - uses: actions/checkout@v7
 
@@ -20,24 +24,6 @@ jobs:
           ---
           name: echo
           description: Echo a message through the cli-tool adapter.
-          source:
-            type: cli-tool
-            command: sh
-            args:
-              - ./run.sh
-            timeout_seconds: 10
-            sandbox:
-              profile: readonly
-              cwd_policy: skill-directory
-          inputs:
-            message:
-              type: string
-              required: true
-              description: Message to echo
-          runx:
-            input_resolution:
-              required:
-                - message
           ---
 
           Echo the provided message.
@@ -68,22 +54,34 @@ jobs:
           EOF
           cat > "$RUNNER_TEMP/runx-fixture/skills/echo/run.sh" <<'EOF'
           #!/bin/sh
-          printf '%s' "${RUNX_INPUT_MESSAGE:-}"
+          node -e 'process.stdout.write(JSON.stringify({message:process.env.RUNX_INPUT_MESSAGE ?? ""}))'
           EOF
           chmod +x "$RUNNER_TEMP/runx-fixture/skills/echo/run.sh"
 
       - name: Run local action
+        id: runx
         uses: ./
-        env:
-          RUNX_RECEIPT_SIGN_KID: runx-action-smoke
-          RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
-          RUNX_RECEIPT_SIGN_ISSUER_TYPE: hosted
         with:
           working-directory: ${{ runner.temp }}/runx-fixture
           skill: ./skills/echo
           receipt-dir: ${{ runner.temp }}/runx-receipts
           args: |
             --message=hello from runx-action
+
+      - name: Verify output and receipt
+        shell: bash
+        env:
+          RUNX_ACTION_STDOUT: ${{ steps.runx.outputs.stdout }}
+          RUNX_ACTION_EXIT_CODE: ${{ steps.runx.outputs.exit-code }}
+        run: |
+          set -euo pipefail
+          receipt_id=$(node -e '
+            const result = JSON.parse(process.env.RUNX_ACTION_STDOUT);
+            if (process.env.RUNX_ACTION_EXIT_CODE !== "0" || result.status !== "sealed" || result.result?.message !== "hello from runx-action" || !/^sha256:[0-9a-f]{64}$/.test(result.receipt_id ?? "")) process.exit(1);
+            process.stdout.write(result.receipt_id);
+          ')
+          runx verify "$receipt_id" --receipt-dir "$RUNNER_TEMP/runx-receipts" --json > "$RUNNER_TEMP/verified.json"
+          node -e 'const v=require(process.argv[1]); if(v.valid!==true || v.trees?.[0]?.root_receipt_id!==process.argv[2]) process.exit(1)' "$RUNNER_TEMP/verified.json" "$receipt_id"
 
       - name: Run syntax check
         shell: bash
